@@ -11,7 +11,7 @@ Check-AzureIpAddress.ps1 -IpAddress 13.78.0.1
 .NOTES
     Name    : Check-AzureIpAddress.ps1
     GitHub  : https://github.com/ShuheiUda/Check-AzureIpAddress
-    Version : 0.9.0
+    Version : 1.0.0
     Author  : Syuhei Uda
 #>
 Param(
@@ -107,7 +107,7 @@ Param(
 ### Main method
 
 # Header
-$Version = "0.9.0"
+$Version = "1.0.0"
 $LatestVersionUrl = "https://raw.githubusercontent.com/ShuheiUda/Check-AzureIpAddress/master/LatestVersion.txt"
 $IsAzureIp = $false
 $Region = $null
@@ -145,3 +145,4 @@ $xmlResponse.AzurePublicIpAddresses.Region | foreach{
     }
 }
 Write-Host "$IpAddress is not in Azure." -ForegroundColor Red
+Start-Process "https://db-ip.com/$IpAddress"
