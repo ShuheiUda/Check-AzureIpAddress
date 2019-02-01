@@ -5,11 +5,11 @@ This tool is checking IP address which you inputted is in Azure.
 
 ## Usage
 1. Run PowerShell console
-2. Run Check-AzureIpAddress script (ex. Check-AzureIpAddress.ps1 -IpAddress 13.78.0.1)
+2. Run Check-AzureIpAddress script (ex. Check-AzureIpAddress.ps1 -IpAddresses 13.78.0.1)
 
 ## Parameter
 * Required
-    * IpAddress
+    * IpAddresses
     
 ## Sample
 .\Check-AzureIpAddress
