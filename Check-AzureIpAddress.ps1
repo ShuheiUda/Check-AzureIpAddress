@@ -11,26 +11,28 @@ Check-AzureIpAddress.ps1 -IpAddress 13.78.0.1
 .NOTES
     Name    : Check-AzureIpAddress.ps1
     GitHub  : https://github.com/ShuheiUda/Check-AzureIpAddress
-    Version : 1.0.0
+    Version : 1.1.0
     Author  : Syuhei Uda
 #>
 Param(
-    [Parameter(Mandatory=$true)][string]$IpAddress
+    [Parameter(Mandatory=$true)][array]$IpAddresses
 
 )
 
 function Validate-StringIPv4Address{
 Param(
-    [Parameter(Mandatory=$true)]$IPv4Address
+    [Parameter(Mandatory=$true)]$IPv4Addresses
 )
-    [int[]]$SplitIPv4Address = $IPv4Address.Split(".")
-    if($SplitIPv4Address.Count -ne 4){
-        Return $false
-    }else{
-        for($octet = 0; $octet -lt 4; $octet++){
-            if(($SplitIPv4Address[$octet] -ge 0) -and ($SplitIPv4Address[$octet] -le 256)){
-            }else{
-                Return $false
+    $IPv4Addresses | foreach{
+        [int[]]$SplitIPv4Address = $_.Split(".")
+        if($SplitIPv4Address.Count -ne 4){
+            Return $false
+        }else{
+            for($octet = 0; $octet -lt 4; $octet++){
+                if(($SplitIPv4Address[$octet] -ge 0) -and ($SplitIPv4Address[$octet] -le 256)){
+                }else{
+                    Return $false
+                }
             }
         }
     }
@@ -117,10 +119,10 @@ if($Version -lt $LatestVersion){
     Write-Warning "New version is available. ($LatestVersion)`nhttps://github.com/ShuheiUda/Check-AzureIpAddress"
 }
 
-Write-Debug "$(Get-Date) IpAddress: $IpAddress"
+Write-Debug "$(Get-Date) IpAddress: $IpAddresses"
 
 # Address check
-if((Validate-StringIPv4Address $IpAddress) -eq $false){
+if((Validate-StringIPv4Address $IpAddresses) -eq $false){
     Write-Error "Please input source address correctly. (Example: 192.168.0.0)"
     Return
 }
@@ -129,20 +131,43 @@ if((Validate-StringIPv4Address $IpAddress) -eq $false){
 $downloadUri = "https://www.microsoft.com/en-in/download/confirmation.aspx?id=41653"
 $downloadPage = Invoke-WebRequest -Uri $downloadUri -UseBasicParsing 
 $xmlFileUri = ($downloadPage.RawContent.Split('"') -like "https://*PublicIps*")[0]
-$OriginalFileName = Split-Path $xmlFileUri -Leaf
 $response = Invoke-WebRequest -Uri $xmlFileUri
 [xml]$xmlResponse = [System.Text.Encoding]::UTF8.GetString($response.Content)
 
-# Check IP address
-$xmlResponse.AzurePublicIpAddresses.Region | foreach{
-    $Region = $_.Name
-    $_.IpRange | foreach{
-        # Check IP address
-        if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address (ConvertTo-UInt32IPv4Address $IpAddress) -UInt32StartIPv4Address (ConvertTo-UInt32IPv4StartAddress $_.Subnet) -UInt32EndIPv4Address (ConvertTo-UInt32IPv4EndAddress $_.Subnet)){
-            Write-Host "$IpAddress is in Azure $Region region." -ForegroundColor Green
-            break
+# Get IP address range and service tags from Download Center
+$downloadUri2 = "https://www.microsoft.com/en-in/download/confirmation.aspx?id=56519"
+$downloadPage2 = Invoke-WebRequest -Uri $downloadUri2 -UseBasicParsing 
+$jsonFileUri = ($downloadPage2.RawContent.Split('"') -like "https://*ServiceTags*")[0]
+$response2 = Invoke-WebRequest -Uri $jsonFileUri
+$jsonResponse = [System.Text.Encoding]::UTF8.GetString($response2.Content) | ConvertFrom-Json
+
+
+# Check Region
+:Region foreach($IpAddress in $IpAddresses){
+    $xmlResponse.AzurePublicIpAddresses.Region | foreach{
+        $Region = $_.Name
+        $_.IpRange | foreach{
+            # Check IP address
+            if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address (ConvertTo-UInt32IPv4Address $IpAddress) -UInt32StartIPv4Address (ConvertTo-UInt32IPv4StartAddress $_.Subnet) -UInt32EndIPv4Address (ConvertTo-UInt32IPv4EndAddress $_.Subnet)){
+                Write-Host "$IpAddress is in Azure $Region region." -ForegroundColor Green
+                break Region
+            }
+        }
+    }
+    Write-Host "$IpAddress is not in Azure." -ForegroundColor Red
+    Start-Process "https://db-ip.com/$IpAddress"
+}
+
+
+# Check Service Tag
+foreach($IpAddress in $IpAddresses){
+    $jsonResponse.values | foreach{
+        $Tag = $_.Name
+        $_.properties.addressPrefixes | foreach{
+            # Check IP address
+            if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address (ConvertTo-UInt32IPv4Address $IpAddress) -UInt32StartIPv4Address (ConvertTo-UInt32IPv4StartAddress $_) -UInt32EndIPv4Address (ConvertTo-UInt32IPv4EndAddress $_)){
+                Write-Host "$IpAddress is in $Tag service tags." -ForegroundColor Green
+            }
         }
     }
 }
-Write-Host "$IpAddress is not in Azure." -ForegroundColor Red
-Start-Process "https://db-ip.com/$IpAddress"
