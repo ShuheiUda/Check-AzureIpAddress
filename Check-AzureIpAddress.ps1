@@ -109,7 +109,7 @@ Param(
 ### Main method
 
 # Header
-$Version = "1.0.0"
+$Version = "1.1.0"
 $LatestVersionUrl = "https://raw.githubusercontent.com/ShuheiUda/Check-AzureIpAddress/master/LatestVersion.txt"
 $IsAzureIp = $false
 $Region = $null
