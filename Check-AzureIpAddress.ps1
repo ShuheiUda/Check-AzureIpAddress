@@ -113,6 +113,7 @@ $Version = "1.2.0"
 $LatestVersionUrl = "https://raw.githubusercontent.com/ShuheiUda/Check-AzureIpAddress/master/LatestVersion.txt"
 $IsAzureIp = $false
 $Region = $null
+$AzModule = $false
 
 $LatestVersion = (Invoke-WebRequest $LatestVersionUrl -ErrorAction SilentlyContinue).Content
 if($Version -lt $LatestVersion){
@@ -120,6 +121,13 @@ if($Version -lt $LatestVersion){
 }
 
 Write-Debug "$(Get-Date) IpAddress: $IpAddresses"
+
+# Module Check
+if (Get-Module -ListAvailable -Name Az.Network){
+    $AzModule = $true
+}else{
+    Write-Warning "Please install Az.Network module. (Link: https://github.com/Azure/azure-powershell/releases)"
+}
 
 # Address check
 if((Validate-StringIPv4Address $IpAddresses) -eq $false){
@@ -149,18 +157,21 @@ $jsonResponse.values | foreach{
 }
 
 # Generate BGP Community Int Table
-$BgpCommunity = Get-AzBgpServiceCommunity
-$BgpCommunityTable = @()
-$BgpCommunity.BgpCommunities | foreach{
-    $CommunityName = $_.CommunityName
-    $CommunityValue = $_.CommunityValue
-    $_.CommunityPrefixes | foreach{
-        # Check IP address
-        $BgpCommunityTable += [PSCustomObject]@{
-            "CommunityName" = $CommunityName
-            "CommunityValue" = $CommunityValue
-            "StartAddress" = (ConvertTo-UInt32IPv4StartAddress $_)
-            "EndAddress" = (ConvertTo-UInt32IPv4EndAddress $_)
+if($AzModule){
+    # Az.Network module needed
+    $BgpCommunity = Get-AzBgpServiceCommunity
+    $BgpCommunityTable = @()
+    $BgpCommunity.BgpCommunities | foreach{
+        $CommunityName = $_.CommunityName
+        $CommunityValue = $_.CommunityValue
+        $_.CommunityPrefixes | foreach{
+            # Check IP address
+            $BgpCommunityTable += [PSCustomObject]@{
+                "CommunityName" = $CommunityName
+                "CommunityValue" = $CommunityValue
+                "StartAddress" = (ConvertTo-UInt32IPv4StartAddress $_)
+                "EndAddress" = (ConvertTo-UInt32IPv4EndAddress $_)
+            }
         }
     }
 }
@@ -176,11 +187,15 @@ foreach($IpAddress in $IpAddresses){
             $IsAzureIp = $true
         }
     }
-    $BgpCommunityTable | foreach{
-        # Check IP address
-        if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address $TargetAddress -UInt32StartIPv4Address $_.StartAddress -UInt32EndIPv4Address $_.EndAddress){
-            Write-Host "$IpAddress is in $($_.CommunityName) ($($_.CommunityValue)) BGP community." -ForegroundColor Green
-            $IsAzureIp = $true
+
+    # Az.Network module needed
+    if($AzModule){
+        $BgpCommunityTable | foreach{
+            # Check IP address
+            if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address $TargetAddress -UInt32StartIPv4Address $_.StartAddress -UInt32EndIPv4Address $_.EndAddress){
+                Write-Host "$IpAddress is in $($_.CommunityName) ($($_.CommunityValue)) BGP community." -ForegroundColor Green
+                $IsAzureIp = $true
+            }
         }
     }
 
