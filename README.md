@@ -19,6 +19,7 @@ Copyright (c) 2017 Syuhei Uda
 Released under the [MIT license](http://opensource.org/licenses/mit-license.php )
 
 ## Release Notes
+* 2019/07/10 Ver.1.2.0 : Add BGP community, Optimization
 * 2019/02/01 Ver.1.1.0 : Add Service Tags
 * 2018/09/16 Ver.1.0.0 : Add dbip function
 * 2017/05/01 Ver.0.9.0 (Preview Release) : 1st Release

@@ -6,12 +6,12 @@ This tool is checking IP address which you inputted is in Azure.
 IP address which you want to check.
 
 .EXAMPLE
-Check-AzureIpAddress.ps1 -IpAddress 13.78.0.1
+Check-AzureIpAddress.ps1 -IpAddress 13.78.0.1, 13.78.0.2
 
 .NOTES
     Name    : Check-AzureIpAddress.ps1
     GitHub  : https://github.com/ShuheiUda/Check-AzureIpAddress
-    Version : 1.1.0
+    Version : 1.2.0
     Author  : Syuhei Uda
 #>
 Param(
@@ -109,7 +109,7 @@ Param(
 ### Main method
 
 # Header
-$Version = "1.1.0"
+$Version = "1.2.0"
 $LatestVersionUrl = "https://raw.githubusercontent.com/ShuheiUda/Check-AzureIpAddress/master/LatestVersion.txt"
 $IsAzureIp = $false
 $Region = $null
@@ -127,47 +127,65 @@ if((Validate-StringIPv4Address $IpAddresses) -eq $false){
     Return
 }
 
-# Get IP address range from Download Center
-$downloadUri = "https://www.microsoft.com/en-in/download/confirmation.aspx?id=41653"
-$downloadPage = Invoke-WebRequest -Uri $downloadUri -UseBasicParsing 
-$xmlFileUri = ($downloadPage.RawContent.Split('"') -like "https://*PublicIps*")[0]
-$response = Invoke-WebRequest -Uri $xmlFileUri
-[xml]$xmlResponse = [System.Text.Encoding]::UTF8.GetString($response.Content)
-
 # Get IP address range and service tags from Download Center
-$downloadUri2 = "https://www.microsoft.com/en-in/download/confirmation.aspx?id=56519"
-$downloadPage2 = Invoke-WebRequest -Uri $downloadUri2 -UseBasicParsing 
-$jsonFileUri = ($downloadPage2.RawContent.Split('"') -like "https://*ServiceTags*")[0]
-$response2 = Invoke-WebRequest -Uri $jsonFileUri
-$jsonResponse = [System.Text.Encoding]::UTF8.GetString($response2.Content) | ConvertFrom-Json
+$downloadUri = "https://www.microsoft.com/en-in/download/confirmation.aspx?id=56519"
+$downloadPage = Invoke-WebRequest -Uri $downloadUri -UseBasicParsing 
+$jsonFileUri = ($downloadPage.RawContent.Split('"') -like "https://*ServiceTags*")[0]
+$response = Invoke-WebRequest -Uri $jsonFileUri
+$jsonResponse = [System.Text.Encoding]::UTF8.GetString($response.Content) | ConvertFrom-Json
 
-
-# Check Region
-:Region foreach($IpAddress in $IpAddresses){
-    $xmlResponse.AzurePublicIpAddresses.Region | foreach{
-        $Region = $_.Name
-        $_.IpRange | foreach{
-            # Check IP address
-            if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address (ConvertTo-UInt32IPv4Address $IpAddress) -UInt32StartIPv4Address (ConvertTo-UInt32IPv4StartAddress $_.Subnet) -UInt32EndIPv4Address (ConvertTo-UInt32IPv4EndAddress $_.Subnet)){
-                Write-Host "$IpAddress is in Azure $Region region." -ForegroundColor Green
-                break Region
-            }
+# Generate Service Tag Int Table
+$SetviceTagTable = @()
+$jsonResponse.values | foreach{
+    $Tag = $_.Name
+    $_.properties.addressPrefixes | foreach{
+        # Check IP address
+        $SetviceTagTable += [PSCustomObject]@{
+            "Tag" = $Tag
+            "StartAddress" = (ConvertTo-UInt32IPv4StartAddress $_)
+            "EndAddress" = (ConvertTo-UInt32IPv4EndAddress $_)
         }
     }
-    Write-Host "$IpAddress is not in Azure." -ForegroundColor Red
-    Start-Process "https://db-ip.com/$IpAddress"
 }
 
-
-# Check Service Tag
-foreach($IpAddress in $IpAddresses){
-    $jsonResponse.values | foreach{
-        $Tag = $_.Name
-        $_.properties.addressPrefixes | foreach{
-            # Check IP address
-            if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address (ConvertTo-UInt32IPv4Address $IpAddress) -UInt32StartIPv4Address (ConvertTo-UInt32IPv4StartAddress $_) -UInt32EndIPv4Address (ConvertTo-UInt32IPv4EndAddress $_)){
-                Write-Host "$IpAddress is in $Tag service tags." -ForegroundColor Green
-            }
+# Generate BGP Community Int Table
+$BgpCommunity = Get-AzBgpServiceCommunity
+$BgpCommunityTable = @()
+$BgpCommunity.BgpCommunities | foreach{
+    $CommunityName = $_.CommunityName
+    $CommunityValue = $_.CommunityValue
+    $_.CommunityPrefixes | foreach{
+        # Check IP address
+        $BgpCommunityTable += [PSCustomObject]@{
+            "CommunityName" = $CommunityName
+            "CommunityValue" = $CommunityValue
+            "StartAddress" = (ConvertTo-UInt32IPv4StartAddress $_)
+            "EndAddress" = (ConvertTo-UInt32IPv4EndAddress $_)
         }
+    }
+}
+
+# Check Service Tag and BGP Community
+foreach($IpAddress in $IpAddresses){
+    $IsAzureIp = $false
+    $TargetAddress = ConvertTo-UInt32IPv4Address $IpAddress
+    $SetviceTagTable | foreach{
+        # Check IP address
+        if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address $TargetAddress -UInt32StartIPv4Address $_.StartAddress -UInt32EndIPv4Address $_.EndAddress){
+            Write-Host "$IpAddress is in $($_.Tag) service tags." -ForegroundColor Green
+            $IsAzureIp = $true
+        }
+    }
+    $BgpCommunityTable | foreach{
+        # Check IP address
+        if(Check-UInt32IPv4AddressRange -UInt32TargetIPv4Address $TargetAddress -UInt32StartIPv4Address $_.StartAddress -UInt32EndIPv4Address $_.EndAddress){
+            Write-Host "$IpAddress is in $($_.CommunityName) ($($_.CommunityValue)) BGP community." -ForegroundColor Green
+            $IsAzureIp = $true
+        }
+    }
+
+    if(!$IsAzureIp){
+        Write-Host "$IpAddress is not in Azure." -ForegroundColor Red
+        Start-Process "https://db-ip.com/$IpAddress"
     }
 }
